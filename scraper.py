@@ -1,6 +1,7 @@
 import time
 import csv
 import os
+import shutil
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -9,7 +10,8 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-CHROMEDRIVER_PATH = "/usr/local/bin/chromedriver"
+# Dynamically find chromedriver path or fallback
+CHROMEDRIVER_PATH = shutil.which("chromedriver") or "/usr/local/bin/chromedriver"
 CSV_FILENAME = "filtered_cards.csv"
 PROCESSED_CARDS_FILE = "scraped_cards.txt"
 
@@ -173,6 +175,7 @@ def init_driver():
     options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")  # Important for Docker/GitHub runners
     service = Service(CHROMEDRIVER_PATH)
     driver = webdriver.Chrome(service=service, options=options)
     driver.set_window_size(1920, 1080)
@@ -275,53 +278,41 @@ def fetch_card_data(driver, card_url):
 def load_processed_cards():
     if not os.path.exists(PROCESSED_CARDS_FILE):
         return set()
-    with open(PROCESSED_CARDS_FILE, "r") as f:
-        return set(line.strip() for line in f)
+    with open(PROCESSED_CARDS_FILE, "r") as file:
+        return set(line.strip() for line in file.readlines())
 
-def save_processed_card(card_url):
-    with open(PROCESSED_CARDS_FILE, "a") as f:
-        f.write(card_url + "\n")
-
-def save_to_csv(data, filename=CSV_FILENAME):
-    file_exists = os.path.isfile(filename)
-    with open(filename, "a", newline="", encoding="utf-8") as csvfile:
-        fieldnames = [
-            "Name", "Price", "Grade 7", "Grade 8", "Grade 9", "Grade 9.5", "PSA 10",
-            "Rarity", "Model Number", "Image URL", "URL"
-        ]
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(data)
+def save_processed_card(card_name):
+    with open(PROCESSED_CARDS_FILE, "a") as file:
+        file.write(card_name + "\n")
 
 def main():
     driver = init_driver()
     processed_cards = load_processed_cards()
 
-    try:
+    with open(CSV_FILENAME, "a", newline="", encoding="utf-8") as csvfile:
+        fieldnames = ["Name", "Price", "Grade 7", "Grade 8", "Grade 9", "Grade 9.5", "PSA 10", "Rarity", "Model Number", "Image URL", "URL"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        if os.stat(CSV_FILENAME).st_size == 0:
+            writer.writeheader()
+
         for set_name in ENGLISH_POKEMON_SETS:
-            # Skip any sets with Japanese or Chinese in their name
-            if any(word in set_name.lower() for word in ["japanese", "chinese"]):
-                print(f"Skipping set due to language filter: {set_name}")
-                continue
-
+            print(f"Processing set: {set_name}")
             card_links = get_card_links_from_set(driver, set_name)
-            print(f"Found {len(card_links)} cards in set: {set_name}")
-
-            for link in card_links:
-                if link in processed_cards:
-                    print(f"Skipping already processed card: {link}")
+            for card_link in card_links:
+                if card_link in processed_cards:
+                    print(f"Already processed: {card_link}")
                     continue
-                card_data = fetch_card_data(driver, link)
+                card_data = fetch_card_data(driver, card_link)
                 if card_data:
-                    save_to_csv(card_data)
-                    save_processed_card(link)
+                    writer.writerow(card_data)
+                    csvfile.flush()
+                    save_processed_card(card_link)
+                    processed_cards.add(card_link)
                     print(f"Saved card: {card_data['Name']}")
                 else:
-                    print(f"Skipped card: {link}")
-                time.sleep(2)
-    finally:
-        driver.quit()
+                    print(f"Skipped card at: {card_link}")
+
+    driver.quit()
 
 if __name__ == "__main__":
     main()
