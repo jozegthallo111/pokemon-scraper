@@ -1,0 +1,33 @@
+name: Run Pokémon Scraper
+
+on:
+  workflow_dispatch:    # Allows manual runs
+  schedule:
+    - cron: '0 0 * * 1'  # Runs every Monday at midnight UTC
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🧾 Checkout repo
+        uses: actions/checkout@v3
+
+      - name: 🛠️ Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: 🧪 Install system dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y chromium-browser chromium-chromedriver
+          sudo ln -s /usr/lib/chromium-browser/chromedriver /usr/bin/chromedriver
+
+      - name: 📦 Install Python packages
+        run: pip install -r requirements.txt
+
+      - name: 🚀 Run scraper
+        run: python scraper.py
+        env:
+          CHROME_BIN: /usr/bin/chromium-browser
