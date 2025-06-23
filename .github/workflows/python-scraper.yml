@@ -1,22 +1,23 @@
-name: Run Pokemon Scraper
+name: Pokemon Card Scraper
 
 on:
-  workflow_dispatch: # manual trigger
-  schedule:
-    - cron: "0 3 * * *" # daily at 3 AM UTC (optional)
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   scrape:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-    - name: Set up Python 3.10
+    - name: Setup Python 3.10
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: 3.10
 
     - name: Install dependencies
       run: |
@@ -26,7 +27,7 @@ jobs:
     - name: Install Google Chrome
       run: |
         sudo apt-get update
-        sudo apt-get install -y wget gnupg2
+        sudo apt-get install -y wget unzip xvfb libxi6 libgconf-2-4
         wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
         echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
         sudo apt-get update
@@ -34,20 +35,22 @@ jobs:
 
     - name: Install matching ChromeDriver
       run: |
-        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+        CHROME_VERSION=$(google-chrome --version | grep -oP '\d+' | head -1)
+        echo "Detected Chrome major version: $CHROME_VERSION"
         CHROMEDRIVER_VERSION=$(curl -sS https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_VERSION)
+        echo "Matching ChromeDriver version: $CHROMEDRIVER_VERSION"
         wget -N https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip
-        unzip chromedriver_linux64.zip
+        unzip -o chromedriver_linux64.zip
         sudo mv chromedriver /usr/local/bin/chromedriver
         sudo chmod +x /usr/local/bin/chromedriver
         chromedriver --version
 
-    - name: Run scraper
+    - name: Run scraping script
       run: |
-        python your_scraper_script.py
+        xvfb-run -a scraper.py
 
     - name: Upload CSV artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
-        name: filtered-cards-csv
+        name: scraped-cards-csv
         path: filtered_cards.csv
